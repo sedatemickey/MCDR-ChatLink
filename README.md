@@ -8,11 +8,11 @@
 
 # 使用方法
 0. 在你的一堆mcdr服务器中任意选择一个主服务器，主服务器要一直处于启动状态才能使消息同步服务正常运行
-1. 在release中下载最新版本的插件
-2. 将插件放到plugins文件夹内
+1. 在[release](https://github.com/sedatemickey/MCDR-ChatLink/releases)中下载最新版本的插件
+2. 将插件放到 `plugins` 文件夹内
 3. 运行一次mcdreforged，生成配置文件
-4. 按照下方说明修改config\chat_link\config.json中的配置
-5. 重启mcdreforged
+4. 按照下方说明修改 `config\chat_link\config.json` 中的配置
+5. 重启mcdreforged或重载插件
 
 # 配置文件说明
 ~~没标注释的地方还在开发中，暂时不用管~~
@@ -26,7 +26,7 @@
     "onebot_api_host": "127.0.0.1",
     "onebot_api_port": 8080,
     "qq_group_id": [],
-    "mc_server_name": "测试副服", // 该服务器名称，用于在消息中显示
+    "mc_server_name": "我的mc服务器", // 该服务器名称，用于在消息中显示
     "mc_chat_format": "[{server}] <{player}> {message}", // mc中同步玩家聊天消息的格式
     "mc_event_format": "[{server}] {message}", // mc中同步事件消息的格式
     "qq_chat_format": "[{server}] <{player}> {message}",
@@ -53,3 +53,4 @@
 - [ ] 添加对QQ群消息同步的支持
 - [ ] 使用心跳信息维持连接
 - [ ] 支持MCDR指令
+- [ ] 优化配置文件
