@@ -59,7 +59,7 @@
 
 # QQ机器人框架 连接说明
 
-本插件使用Onebot协议，WebSocket 服务器模式，你的程序作为 WebSocket 服务器，机器人框架作为客户端连接
+本插件使用Onebot协议，WebSocket 服务器模式，ChatSync作为 WebSocket 服务器，QQ机器人框架作为客户端连接
 
 ## 连接地址
 - WebSocket 地址：`ws://127.0.0.1:8080/onebot/v11/ws`
@@ -67,7 +67,7 @@
 
 
 # TODO
-- [ ] 添加对QQ群消息同步的支持
+- [x] 添加对QQ群消息同步的支持
 - [ ] 使用心跳信息维持连接
 - [ ] 支持MCDR指令
 - [ ] 优化配置文件
