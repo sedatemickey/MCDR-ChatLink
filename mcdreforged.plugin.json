@@ -1,6 +1,6 @@
 {
     "id": "chat_sync",
-    "version": "1.1.0",
+    "version": "1.1.1",
     "name": "ChatSync",
     "description": "将你所有的mcdr服务器消息+QQ群消息全部同步",
     "author": "sedatemickey",
