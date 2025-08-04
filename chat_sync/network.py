@@ -1,5 +1,5 @@
 """
-ChatLink 网络通信模块
+ChatSync 网络通信模块
 实现主副服务器之间的socket通信功能
 """
 
@@ -10,7 +10,7 @@ import time
 from typing import Optional, Callable, Dict, List, Any
 from mcdreforged.plugin.si.plugin_server_interface import PluginServerInterface
 
-from .config import ChatLinkConfig
+from .config import ChatSyncConfig
 from .utils import mcdr_logger
 
 
@@ -20,7 +20,7 @@ class NetworkManager:
     def __init__(self):
         self.logger = mcdr_logger
         self.server: Optional[PluginServerInterface] = None
-        self.config: Optional[ChatLinkConfig] = None
+        self.config: Optional[ChatSyncConfig] = None
 
         # 服务器模式相关
         self.is_main_server = True
@@ -40,7 +40,7 @@ class NetworkManager:
         self.is_running = False
         self.should_stop = False
 
-    def initialize(self, server: PluginServerInterface, config: ChatLinkConfig):
+    def initialize(self, server: PluginServerInterface, config: ChatSyncConfig):
         """初始化网络管理器"""
         self.server = server
         self.config = config
@@ -383,9 +383,9 @@ class NetworkManager:
         try:
             message_type = data.get("type")
 
-            if message_type == "chat_link_obj":
-                # 处理 ChatLinkObj 消息
-                self._handle_chat_link_message(data, sender_id)
+            if message_type == "chat_sync_obj":
+                # 处理 ChatSyncObj 消息
+                self._handle_chat_sync_message(data, sender_id)
             elif message_type == "ping":
                 # 处理心跳消息
                 self._handle_ping_message(data, sender_id)
@@ -395,8 +395,8 @@ class NetworkManager:
         except Exception as e:
             self.logger.error(f"处理消息时出错: {e}")
 
-    def _handle_chat_link_message(self, data: Dict[str, Any], sender_id: str):
-        """处理 ChatLinkObj 消息"""
+    def _handle_chat_sync_message(self, data: Dict[str, Any], sender_id: str):
+        """处理 ChatSyncObj 消息"""
         try:
             # 调用注册的消息处理器
             for handler in self.message_handlers:
@@ -410,7 +410,7 @@ class NetworkManager:
                 self._broadcast_to_clients(data, exclude_client=sender_id)
 
         except Exception as e:
-            self.logger.error(f"处理 ChatLinkObj 消息时出错: {e}")
+            self.logger.error(f"处理 ChatSyncObj 消息时出错: {e}")
 
     def _handle_ping_message(self, data: Dict[str, Any], sender_id: str):
         """处理心跳消息"""
@@ -448,39 +448,39 @@ class NetworkManager:
         self.message_handlers.append(handler)
         self.logger.info("已注册消息处理器")
 
-    def send_chat_link_message(self, chat_link_obj: Any, exclude_client: Optional[str] = None) -> bool:
-        """发送 ChatLinkObj 消息"""
+    def send_chat_sync_message(self, chat_sync_obj: Any, exclude_client: Optional[str] = None) -> bool:
+        """发送 ChatSyncObj 消息"""
         try:
-            # 将 ChatLinkObj 序列化为字典
-            if hasattr(chat_link_obj, 'to_dict'):
-                chat_link_data = chat_link_obj.to_dict()
+            # 将 ChatSyncObj 序列化为字典
+            if hasattr(chat_sync_obj, 'to_dict'):
+                chat_sync_data = chat_sync_obj.to_dict()
             else:
-                # 兼容性处理，如果不是 ChatLinkObj 对象
-                chat_link_data = chat_link_obj.__dict__
-        
+                # 兼容性处理，如果不是 ChatSyncObj 对象
+                chat_sync_data = chat_sync_obj.__dict__
+
             message = {
-                "type": "chat_link_obj",
-                "data": chat_link_data,
+                "type": "chat_sync_obj",
+                "data": chat_sync_data,
                 "timestamp": time.time()
             }
 
             if self.is_main_server:
                 # 主服务器广播给所有副服务器
                 self._broadcast_to_clients(message, exclude_client=exclude_client)
-                self.logger.debug(f"已广播网络消息: {chat_link_obj}")
+                self.logger.debug(f"已广播网络消息: {chat_sync_obj}")
                 return True
             else:
                 # 副服务器发送给主服务器
                 if self.is_connected and self.client_socket:
                     self._send_message(self.client_socket, message)
-                    mcdr_logger.debug(f"已向主服务器发送网络消息: {chat_link_obj}")
+                    mcdr_logger.debug(f"已向主服务器发送网络消息: {chat_sync_obj}")
                     return True
                 else:
                     self.logger.warning("未连接到主服务器，无法发送消息")
                     return False
 
         except Exception as e:
-            self.logger.error(f"发送 ChatLinkObj 消息失败: {e}")
+            self.logger.error(f"发送 ChatSyncObj 消息失败: {e}")
             return False
 
     def send_ping(self) -> bool:

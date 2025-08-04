@@ -1,4 +1,4 @@
-# MCDR-ChatLink
+# MCDR-ChatSync
 一个将你所有的mcdr服务器消息+QQ群消息全部同步的插件
 
 当你在一个mcdr服务器内发送信息/触发死亡或成就等事件时，其他mcdr服务器和QQ群内的用户都能同步看到
@@ -8,10 +8,10 @@
 
 # 使用方法
 0. 在你的一堆mcdr服务器中任意选择一个主服务器，主服务器要一直处于启动状态才能使消息同步服务正常运行
-1. 在[release](https://github.com/sedatemickey/MCDR-ChatLink/releases)中下载最新版本的插件
+1. 在[release](https://github.com/sedatemickey/MCDR-ChatSync/releases)中下载最新版本的插件
 2. 将插件放到 `plugins` 文件夹内
 3. 运行一次mcdreforged，生成配置文件
-4. 按照下方说明修改 `config\chat_link\config.json` 中的配置
+4. 按照下方说明修改 `config\chat_sync\config.json` 中的配置
 5. 重启mcdreforged或重载插件
 
 # 配置文件说明

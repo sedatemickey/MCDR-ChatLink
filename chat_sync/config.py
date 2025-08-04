@@ -3,10 +3,10 @@ from mcdreforged.utils.serializer import Serializable
 from mcdreforged.plugin.si.plugin_server_interface import PluginServerInterface
 
 
-class ChatLinkConfig(Serializable):
-    """ChatLink 插件配置类"""
-    
-    # ChatLink 主副服务器配置
+class ChatSyncConfig(Serializable):
+    """ChatSync 插件配置类"""
+
+    # ChatSync 主副服务器配置
     main_server: bool = True
     main_server_host: str = "127.0.0.1"
     main_server_port: int = 29530
@@ -69,8 +69,8 @@ class UserBindConfig(Serializable):
         return self
 
 
-def load_chat_link_config(server: PluginServerInterface) -> ChatLinkConfig:
-    return cast(ChatLinkConfig, server.load_config_simple(target_class=ChatLinkConfig))
+def load_chat_sync_config(server: PluginServerInterface) -> ChatSyncConfig:
+    return cast(ChatSyncConfig, server.load_config_simple(target_class=ChatSyncConfig))
 
 def load_user_bind_config(server: PluginServerInterface) -> UserBindConfig:
     config = cast(UserBindConfig, server.load_config_simple("userbind.json",target_class=UserBindConfig))

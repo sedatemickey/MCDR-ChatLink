@@ -1,14 +1,14 @@
 {
-    "id": "chat_link",
-    "version": "1.0.0",
-    "name": "ChatLink",
+    "id": "chat_sync",
+    "version": "1.0.1",
+    "name": "ChatSync",
     "description": "将你所有的mcdr服务器消息+QQ群消息全部同步",
     "author": "sedatemickey",
-    "link": "https://github.com/sedatemickey/MCDR-ChatLink",
+    "link": "https://github.com/sedatemickey/MCDR-ChatSync",
     "dependencies": {
         "mcdreforged": ">=2.6.0",
         "online_player_api": ">=1.0.0",
         "mg_events": ">=1.1.0"
     },
-    "archive_name": "ChatLink-v{version}"
+    "archive_name": "ChatSync-v{version}"
 }
