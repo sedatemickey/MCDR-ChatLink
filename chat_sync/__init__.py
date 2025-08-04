@@ -65,10 +65,7 @@ def on_load(server: PluginServerInterface, prev_module):
     # 网络管理器
     network_manager.initialize(server, config)
     network_manager.register_message_handler(handle_network_message)
-    # if network_manager.start():
-    #     mcdr_logger.info("网络服务启动成功")
-    # else:
-    #     mcdr_logger.error("网络服务启动失败")
+    network_manager.start()
     # qq机器人
     if config.qq_bot_enabled and config.main_server:
         success = init_qq_bot(
