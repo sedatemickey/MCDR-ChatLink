@@ -1,11 +1,20 @@
+import asyncio
 from mcdreforged.plugin.si.plugin_server_interface import PluginServerInterface
 from mcdreforged.info_reactor.info import Info
+from typing import Optional
 
 from .config import load_chat_sync_config, load_user_bind_config
 from .config import ChatSyncConfig, UserBindConfig
 from .utils import should_filter_message
 from .network import network_manager
 from .utils import mcdr_logger
+from .qq import (
+    init_qq_bot, start_qq_bot, stop_qq_bot,
+    send_to_qq_group, send_to_qq_user,
+    register_qq_group_handler, register_qq_private_handler,
+    is_qq_bot_connected, setup_example_handlers,
+    example_send_mc_message_to_qq, example_send_player_join_leave
+)
 
 config: ChatSyncConfig
 user_bind_config: UserBindConfig
@@ -56,12 +65,157 @@ def on_load(server: PluginServerInterface, prev_module):
     # 网络管理器
     network_manager.initialize(server, config)
     network_manager.register_message_handler(handle_network_message)
-    if network_manager.start():
-        mcdr_logger.info("网络服务启动成功")
-    else:
-        mcdr_logger.error("网络服务启动失败")
+    # if network_manager.start():
+    #     mcdr_logger.info("网络服务启动成功")
+    # else:
+    #     mcdr_logger.error("网络服务启动失败")
+    # qq机器人
+    if config.qq_bot_enabled and config.main_server:
+        success = init_qq_bot(
+            server=server,
+            config=config
+        )
+        if success:
+            # 注册自定义消息处理器
+            register_qq_group_handler(on_qq_group_message)
+            
+            # 或者使用示例处理器
+            # setup_example_handlers()
+            
+            # 启动机器人
+            start_qq_bot()
+        else:
+            server.logger.error("nonebot服务初始化失败")
         
-    server.logger.info("ChatSync loaded")
+    mcdr_logger.info("ChatSync loaded")
+
+
+# def get_bound_nickname(user_id: str) -> str | None:
+#     """
+#     获取用户绑定的昵称
+
+#     :param user_id: QQ用户ID
+#     :return: 绑定的昵称，如果未绑定则返回None
+#     """
+#     global user_bind_config
+#     return user_bind_config.get_bound_nickname(user_id)
+
+
+# def is_user_bound(user_id: str) -> bool:
+#     """
+#     检查用户是否已绑定昵称
+
+#     :param user_id: QQ用户ID
+#     :return: 如果已绑定返回True，否则返回False
+#     """
+#     global user_bind_config
+#     return user_bind_config.is_bound(user_id)
+
+
+async def on_qq_group_message(bot, group_id, user_id, nickname, message, event):
+    """
+    处理QQ群消息
+    """
+    global plugin_server
+    server = plugin_server
+    if message.startswith("/"):
+        # 处理指令
+        command_parts = message[1:].strip().split()
+        if len(command_parts) == 0:
+            return
+
+        command = command_parts[0].lower()
+
+        if command == "bind":
+            if len(command_parts) < 2:
+                await send_to_qq_group(group_id, f"用法: /bind <游戏昵称>")
+                return
+
+            username = command_parts[1]
+
+            # 验证用户名格式（可选，根据需要调整）
+            if len(username) < 3 or len(username) > 16:
+                await send_to_qq_group(group_id, f"游戏昵称长度必须在3-16个字符之间")
+                return
+
+            # 检查是否已经绑定
+            if user_bind_config.is_bound(user_id):
+                old_username = user_bind_config.get_bound_nickname(user_id)
+                await send_to_qq_group(group_id, f"您已绑定昵称 {old_username}，如需更换请先使用 /unbind 解绑")
+                return
+
+            # 检查用户名是否已被其他人绑定
+            for existing_qq_id, existing_username in user_bind_config.qqid_nickname.items():
+                if existing_username == username and existing_qq_id != str(user_id):
+                    await send_to_qq_group(group_id, f"昵称 {username} 已被其他用户绑定")
+                    return
+
+            # 执行绑定
+            try:
+                user_bind_config.bind(user_id, username)
+                await send_to_qq_group(group_id, f"绑定成功！用户 {nickname} 已绑定游戏昵称: {username}")
+                mcdr_logger.info(f"用户 {nickname}({user_id}) 绑定游戏昵称: {username}")
+            except Exception as e:
+                await send_to_qq_group(group_id, f"绑定失败: {str(e)}")
+                mcdr_logger.error(f"绑定失败: {e}")
+
+        elif command == "unbind":
+            if not user_bind_config.is_bound(user_id):
+                await send_to_qq_group(group_id, f"您尚未绑定任何昵称")
+                return
+
+            try:
+                old_username = user_bind_config.get_bound_nickname(user_id)
+                user_bind_config.unbind(user_id)
+                await send_to_qq_group(group_id, f"解绑成功！已解除与昵称 {old_username} 的绑定")
+                mcdr_logger.info(f"用户 {nickname}({user_id}) 解绑游戏昵称: {old_username}")
+            except Exception as e:
+                await send_to_qq_group(group_id, f"解绑失败: {str(e)}")
+                mcdr_logger.error(f"解绑失败: {e}")
+
+        elif command == "help":
+            help_text = """可用指令:
+/bind <游戏昵称> - 绑定游戏昵称
+/unbind - 解绑当前昵称
+/help - 显示帮助信息"""
+            await send_to_qq_group(group_id, help_text)
+
+        else:
+            await send_to_qq_group(group_id, f"未知指令: /{command}，使用 /help 查看可用指令")
+
+        return
+    
+    if not config.sync_qq_to_mc:
+        return
+    mcdr_logger.debug(f"开始处理 {group_id} 群消息: {user_id} -> {message}")
+
+    if group_id in config.qq_group_id:
+        if should_filter_message(config, message):
+            mcdr_logger.debug(f"消息被过滤，跳过")
+            return
+
+        # 检查user_id是否已经绑定了nickname
+        if user_bind_config.is_bound(user_id):
+            bound_nickname = user_bind_config.get_bound_nickname(user_id)
+            mcdr_logger.debug(f"用户 {user_id} 已绑定昵称: {bound_nickname}")
+            chat_sync_obj = ChatSyncObj(4, config.mc_server_name, bound_nickname, message)
+            if config.sync_qq_to_mc:
+                # 构造 ChatSyncObj 并发送到MC服务器
+                forward_to_game(chat_sync_obj, False)
+                network_manager.send_chat_sync_message(chat_sync_obj)
+            if config.sync_qq_to_qq:
+                forward_to_qq_group(chat_sync_obj, False, exclude_group=group_id)
+        else:
+            mcdr_logger.debug(f"用户 {user_id} 未绑定昵称")
+            await send_to_qq_group(group_id, f"用户 {nickname} 未绑定昵称，使用 /bind <游戏昵称> 来绑定你的游戏昵称")
+            
+
+        # TODO: 在这里添加消息转发到MC的逻辑
+        # 可以使用 display_name 作为显示的玩家名称
+
+    else:
+        mcdr_logger.debug(f"群 {group_id} 不在同步列表中，跳过")
+        
 
 
 def handle_network_message(message_data, sender_id):
@@ -82,6 +236,9 @@ def handle_network_message(message_data, sender_id):
             boardcast_chat_sync_obj = chat_sync_obj
             boardcast_chat_sync_obj.type = 2
             network_manager.send_chat_sync_message(boardcast_chat_sync_obj, exclude_client=sender_id)
+            
+            #广播到QQ
+            forward_to_qq_group(chat_sync_obj, False)
 
             # 使用配置的格式发送消息到 MC 服务器
             forward_to_game(chat_sync_obj, False)
@@ -91,6 +248,9 @@ def handle_network_message(message_data, sender_id):
             boardcast_chat_sync_obj = chat_sync_obj
             boardcast_chat_sync_obj.type = 3
             network_manager.send_chat_sync_message(boardcast_chat_sync_obj, exclude_client=sender_id)
+            
+            #广播到QQ
+            forward_to_qq_group(chat_sync_obj, True)
 
             # 使用配置的格式发送消息到 MC 服务器
             forward_to_game(chat_sync_obj, True)
@@ -102,7 +262,7 @@ def handle_network_message(message_data, sender_id):
             forward_to_game(chat_sync_obj, True)
 
         elif chat_sync_obj.type == 4:  # 发送QQ群消息
-            pass
+            forward_to_game(chat_sync_obj, False)
 
         else:
             raise ValueError(f"未知的 ChatSyncObj 类型: {chat_sync_obj.type}")
@@ -114,6 +274,14 @@ def handle_network_message(message_data, sender_id):
         
 
 def forward_to_game(chat_sync_obj: ChatSyncObj, is_event: bool):
+    if chat_sync_obj.type == 4:
+        formatted_message = config.qq_chat_format.format(
+            player=chat_sync_obj.player or "未知玩家",
+            message=chat_sync_obj.message
+        )
+        plugin_server.say(formatted_message)
+        mcdr_logger.info(f"已同步来自 QQ 的消息: {formatted_message}")
+        return
     if not is_event:
         formatted_message = config.mc_chat_format.format(
             server=chat_sync_obj.server_name,
@@ -130,6 +298,67 @@ def forward_to_game(chat_sync_obj: ChatSyncObj, is_event: bool):
         plugin_server.say(formatted_message)
         mcdr_logger.info(f"已同步来自 {chat_sync_obj.server_name} 的事件: {formatted_message}")
     
+    
+def _safe_send_to_qq_group(group_id: int, message: str):
+    """发送消息到QQ群，处理异步调用"""
+    # 输入验证
+    if not isinstance(group_id, int) or group_id <= 0:
+        mcdr_logger.error(f"无效的群ID: {group_id}")
+        return
+
+    if not isinstance(message, str) or not message.strip():
+        mcdr_logger.error("消息内容不能为空")
+        return
+
+    # 消息长度限制
+    if len(message) > 1000:
+        message = message[:997] + "..."
+        mcdr_logger.warning("消息过长，已截断")
+
+    try:
+        # 尝试获取当前运行的事件循环
+        asyncio.get_running_loop()
+        # 如果有运行的事件循环，创建任务
+        asyncio.create_task(send_to_qq_group(group_id, message))
+    except RuntimeError:
+        # 如果没有运行的事件循环，在新线程中运行
+        import threading
+        def run_async():
+            try:
+                asyncio.run(send_to_qq_group(group_id, message))
+            except Exception as e:
+                mcdr_logger.error(f"发送QQ消息失败: {e}")
+        thread = threading.Thread(target=run_async, name=f"QQ-Send-{group_id}")
+        thread.daemon = True
+        thread.start()
+
+def forward_to_qq_group(chat_sync_obj: ChatSyncObj, is_event: bool, exclude_group: Optional[int] = None):
+    """转发消息到QQ群"""
+    if not config.qq_group_id:
+        return
+
+    # 根据消息类型选择格式
+    if not is_event:
+        formatted_message = config.mc_chat_format.format(
+            server=chat_sync_obj.server_name,
+            player=chat_sync_obj.player or "未知玩家",
+            message=chat_sync_obj.message
+        )
+        log_type = "消息"
+    else:
+        formatted_message = config.mc_event_format.format(
+            server=chat_sync_obj.server_name,
+            message=chat_sync_obj.message
+        )
+        log_type = "事件"
+
+    # 发送到所有配置的QQ群
+    for group_id in config.qq_group_id:
+        if exclude_group and group_id == exclude_group:
+            continue
+        _safe_send_to_qq_group(group_id, formatted_message)
+
+    mcdr_logger.info(f"已同步来自 {chat_sync_obj.server_name} 的{log_type}到QQ群: {formatted_message}")
 
 
 def on_info(server: PluginServerInterface, info: Info):
@@ -148,6 +377,7 @@ def on_info(server: PluginServerInterface, info: Info):
         # 广播消息
         chat_sync_obj = ChatSyncObj(2 if config.main_server else 0, config.mc_server_name, player_name, message_content)
         network_manager.send_chat_sync_message(chat_sync_obj)
+        forward_to_qq_group(chat_sync_obj, False)
         
 
 def on_player_joined(server: PluginServerInterface, player_name: str, info: Info):
@@ -162,6 +392,7 @@ def on_player_joined(server: PluginServerInterface, player_name: str, info: Info
     # 广播消息
     chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}加入了游戏")
     network_manager.send_chat_sync_message(chat_sync_obj)
+    forward_to_qq_group(chat_sync_obj, True)
 
 
 def on_player_left(server: PluginServerInterface, player_name: str):
@@ -176,6 +407,7 @@ def on_player_left(server: PluginServerInterface, player_name: str):
     # 广播消息
     chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}离开了游戏")
     network_manager.send_chat_sync_message(chat_sync_obj)
+    forward_to_qq_group(chat_sync_obj, True)
 
 
 def on_player_death(server: PluginServerInterface, player: str, event: str, content):
@@ -195,6 +427,7 @@ def on_player_death(server: PluginServerInterface, player: str, event: str, cont
     # 广播消息
     chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
     network_manager.send_chat_sync_message(chat_sync_obj)
+    forward_to_qq_group(chat_sync_obj, True)
 
 
 def on_player_advancement(server: PluginServerInterface, player: str, event: str, content):
@@ -214,15 +447,8 @@ def on_player_advancement(server: PluginServerInterface, player: str, event: str
     # 广播消息
     chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
     network_manager.send_chat_sync_message(chat_sync_obj)
+    forward_to_qq_group(chat_sync_obj, True)
 
-
-def on_qq_message(qqid: str, message: str):
-    """
-    处理QQ群消息
-    """
-    global plugin_server
-    server = plugin_server
-    mcdr_logger.debug(f"QQ群消息: {qqid} -> {message}")
 
 
 def on_unload(server: PluginServerInterface):
