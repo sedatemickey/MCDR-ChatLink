@@ -1,18 +1,18 @@
 from mcdreforged.plugin.si.plugin_server_interface import PluginServerInterface
 from mcdreforged.info_reactor.info import Info
 
-from .config import load_chat_link_config, load_user_bind_config
-from .config import ChatLinkConfig, UserBindConfig
+from .config import load_chat_sync_config, load_user_bind_config
+from .config import ChatSyncConfig, UserBindConfig
 from .utils import should_filter_message
 from .network import network_manager
 from .utils import mcdr_logger
 
-config: ChatLinkConfig
+config: ChatSyncConfig
 user_bind_config: UserBindConfig
 plugin_server: PluginServerInterface
 
-class ChatLinkObj:
-    """ChatLink 消息对象"""
+class ChatSyncObj:
+    """ChatSync 消息对象"""
     def __init__(self, type: int, server_name: str, player: str | None, message: str):
         self.type = type  # 0: 取得玩家消息 1:取得玩家事件信息 2: 发送玩家消息 3: 发送玩家事件信息 4: 发送QQ群消息
         self.server_name = server_name
@@ -46,7 +46,7 @@ def on_load(server: PluginServerInterface, prev_module):
     global config, user_bind_config, plugin_server
     plugin_server = server
     # 获取插件配置
-    config = load_chat_link_config(server)
+    config = load_chat_sync_config(server)
     user_bind_config = load_user_bind_config(server)
     # 注册事件监听器
     server.register_event_listener("PlayerDeathEvent", on_player_death)
@@ -61,74 +61,74 @@ def on_load(server: PluginServerInterface, prev_module):
     else:
         mcdr_logger.error("网络服务启动失败")
         
-    server.logger.info("ChatLink loaded")
+    server.logger.info("ChatSync loaded")
 
 
 def handle_network_message(message_data, sender_id):
-    """处理来自网络的 ChatLinkObj 消息"""
+    """处理来自网络的 ChatSyncObj 消息"""
     global plugin_server
     try:
-        # 处理接收到的 ChatLinkObj 消息
-        chat_link_data = message_data.get("data")
-        
-        # 将字典数据反序列化为 ChatLinkObj 对象
-        if isinstance(chat_link_data, dict):
-            chat_link_obj = ChatLinkObj.from_dict(chat_link_data)
+        # 处理接收到的 ChatSyncObj 消息
+        chat_sync_data = message_data.get("data")
+
+        # 将字典数据反序列化为 ChatSyncObj 对象
+        if isinstance(chat_sync_data, dict):
+            chat_sync_obj = ChatSyncObj.from_dict(chat_sync_data)
         else:
-            chat_link_obj = chat_link_data  # 兼容性处理
-            
-        if chat_link_obj.type == 0:  # 取得玩家消息
+            chat_sync_obj = chat_sync_data  # 兼容性处理
+
+        if chat_sync_obj.type == 0:  # 取得玩家消息
             # 广播到子服务器
-            boardcast_chat_link_obj = chat_link_obj
-            boardcast_chat_link_obj.type = 2
-            network_manager.send_chat_link_message(boardcast_chat_link_obj, exclude_client=sender_id)
+            boardcast_chat_sync_obj = chat_sync_obj
+            boardcast_chat_sync_obj.type = 2
+            network_manager.send_chat_sync_message(boardcast_chat_sync_obj, exclude_client=sender_id)
 
             # 使用配置的格式发送消息到 MC 服务器
-            forward_to_game(chat_link_obj, False)
-            
-        elif chat_link_obj.type == 1:  # 取得玩家事件消息
+            forward_to_game(chat_sync_obj, False)
+
+        elif chat_sync_obj.type == 1:  # 取得玩家事件消息
             # 广播到子服务器
-            boardcast_chat_link_obj = chat_link_obj
-            boardcast_chat_link_obj.type = 3
-            network_manager.send_chat_link_message(boardcast_chat_link_obj, exclude_client=sender_id)
+            boardcast_chat_sync_obj = chat_sync_obj
+            boardcast_chat_sync_obj.type = 3
+            network_manager.send_chat_sync_message(boardcast_chat_sync_obj, exclude_client=sender_id)
 
             # 使用配置的格式发送消息到 MC 服务器
-            forward_to_game(chat_link_obj, True)
-            
-        elif chat_link_obj.type == 2:  # 发送玩家消息
-            forward_to_game(chat_link_obj, False)
-        
-        elif chat_link_obj.type == 3:  # 发送玩家事件信息
-            forward_to_game(chat_link_obj, True)
-        
-        elif chat_link_obj.type == 4:  # 发送QQ群消息
+            forward_to_game(chat_sync_obj, True)
+
+        elif chat_sync_obj.type == 2:  # 发送玩家消息
+            forward_to_game(chat_sync_obj, False)
+
+        elif chat_sync_obj.type == 3:  # 发送玩家事件信息
+            forward_to_game(chat_sync_obj, True)
+
+        elif chat_sync_obj.type == 4:  # 发送QQ群消息
             pass
-        
+
         else:
-            raise ValueError(f"未知的 ChatLinkObj 类型: {chat_link_obj.type}")
-        
-        mcdr_logger.debug(f"收到网络消息: {chat_link_obj}")
-        
+            raise ValueError(f"未知的 ChatSyncObj 类型: {chat_sync_obj.type}")
+
+        mcdr_logger.debug(f"收到网络消息: {chat_sync_obj}")
+
     except Exception as e:
         mcdr_logger.error(f"处理网络消息失败: {e}")
         
 
-def forward_to_game(chat_link_obj: ChatLinkObj, is_event: bool):
+def forward_to_game(chat_sync_obj: ChatSyncObj, is_event: bool):
     if not is_event:
         formatted_message = config.mc_chat_format.format(
-            server=chat_link_obj.server_name,
-            player=chat_link_obj.player or "未知玩家",
-            message=chat_link_obj.message
+            server=chat_sync_obj.server_name,
+            player=chat_sync_obj.player or "未知玩家",
+            message=chat_sync_obj.message
         )
         plugin_server.say(formatted_message)
-        mcdr_logger.info(f"已同步来自 {chat_link_obj.server_name} 的消息: {formatted_message}")
+        mcdr_logger.info(f"已同步来自 {chat_sync_obj.server_name} 的消息: {formatted_message}")
     else:
         formatted_message = config.mc_event_format.format(
-            server=chat_link_obj.server_name,
-            message=chat_link_obj.message
+            server=chat_sync_obj.server_name,
+            message=chat_sync_obj.message
         )
         plugin_server.say(formatted_message)
-        mcdr_logger.info(f"已同步来自 {chat_link_obj.server_name} 的事件: {formatted_message}")
+        mcdr_logger.info(f"已同步来自 {chat_sync_obj.server_name} 的事件: {formatted_message}")
     
 
 
@@ -146,8 +146,8 @@ def on_info(server: PluginServerInterface, info: Info):
             return
 
         # 广播消息
-        chat_link_obj = ChatLinkObj(2 if config.main_server else 0, config.mc_server_name, player_name, message_content)
-        network_manager.send_chat_link_message(chat_link_obj)
+        chat_sync_obj = ChatSyncObj(2 if config.main_server else 0, config.mc_server_name, player_name, message_content)
+        network_manager.send_chat_sync_message(chat_sync_obj)
         
 
 def on_player_joined(server: PluginServerInterface, player_name: str, info: Info):
@@ -160,8 +160,8 @@ def on_player_joined(server: PluginServerInterface, player_name: str, info: Info
         return
     
     # 广播消息
-    chat_link_obj = ChatLinkObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}加入了游戏")
-    network_manager.send_chat_link_message(chat_link_obj)
+    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}加入了游戏")
+    network_manager.send_chat_sync_message(chat_sync_obj)
 
 
 def on_player_left(server: PluginServerInterface, player_name: str):
@@ -174,8 +174,8 @@ def on_player_left(server: PluginServerInterface, player_name: str):
         return
     
     # 广播消息
-    chat_link_obj = ChatLinkObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}离开了游戏")
-    network_manager.send_chat_link_message(chat_link_obj)
+    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}离开了游戏")
+    network_manager.send_chat_sync_message(chat_sync_obj)
 
 
 def on_player_death(server: PluginServerInterface, player: str, event: str, content):
@@ -193,8 +193,8 @@ def on_player_death(server: PluginServerInterface, player: str, event: str, cont
         return
     
     # 广播消息
-    chat_link_obj = ChatLinkObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
-    network_manager.send_chat_link_message(chat_link_obj)
+    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
+    network_manager.send_chat_sync_message(chat_sync_obj)
 
 
 def on_player_advancement(server: PluginServerInterface, player: str, event: str, content):
@@ -212,8 +212,8 @@ def on_player_advancement(server: PluginServerInterface, player: str, event: str
         return
     
     # 广播消息
-    chat_link_obj = ChatLinkObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
-    network_manager.send_chat_link_message(chat_link_obj)
+    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
+    network_manager.send_chat_sync_message(chat_sync_obj)
 
 
 def on_qq_message(qqid: str, message: str):

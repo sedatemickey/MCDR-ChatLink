@@ -1,8 +1,8 @@
 from mcdreforged.plugin.si.plugin_server_interface import PluginServerInterface
 
-from .config import ChatLinkConfig
+from .config import ChatSyncConfig
 
-def should_filter_message(config: ChatLinkConfig, message: str) -> bool:
+def should_filter_message(config: ChatSyncConfig, message: str) -> bool:
     """
     检查消息是否应该被过滤
     """
