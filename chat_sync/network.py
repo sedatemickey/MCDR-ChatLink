@@ -46,7 +46,7 @@ class NetworkManager:
         self.config = config
         self.is_main_server = config.main_server
 
-        self.logger.info(f"网络管理器初始化 - 模式: {'主服务器' if self.is_main_server else '副服务器'}")
+        self.logger.debug(f"网络管理器初始化 - 模式: {'主服务器' if self.is_main_server else '副服务器'}")
 
     def start(self) -> bool:
         """启动网络服务"""
@@ -446,7 +446,7 @@ class NetworkManager:
     def register_message_handler(self, handler: Callable[[Any, str], None]):
         """注册消息处理器"""
         self.message_handlers.append(handler)
-        self.logger.info("已注册消息处理器")
+        self.logger.debug("已注册消息处理器")
 
     def send_chat_sync_message(self, chat_sync_obj: Any, exclude_client: Optional[str] = None) -> bool:
         """发送 ChatSyncObj 消息"""
