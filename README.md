@@ -7,9 +7,16 @@
 **与QQ群同步消息的功能正在开发中~**
 
 # 使用方法
+## 一键安装（推荐）
 0. 在你的一堆mcdr服务器中任意选择一个主服务器，主服务器要一直处于启动状态才能使消息同步服务正常运行
-1. 在[release](https://github.com/sedatemickey/MCDR-ChatSync/releases)中下载最新版本的插件
-2. 将插件放到 `plugins` 文件夹内
+1. 启动mcdreforged，运行指令 `!!MCDR plugin install mg_events`
+2. 按照下方说明修改 `config\chat_sync\config.json` 中的配置
+3. 重启mcdreforged或重载插件
+
+## 手动安装
+0. 在你的一堆mcdr服务器中任意选择一个主服务器，主服务器要一直处于启动状态才能使消息同步服务正常运行
+1. 在 [release](https://github.com/sedatemickey/MCDR-ChatSync/releases) 中下载最新版本的插件，放到 `plugins` 文件夹内
+2. 安装前置插件 [online_player_api](https://mcdreforged.com/zh-CN/plugin/online_player_api) 和 [mg_events](https://mcdreforged.com/zh-CN/plugin/mg_events)
 3. 运行一次mcdreforged，生成配置文件
 4. 按照下方说明修改 `config\chat_sync\config.json` 中的配置
 5. 重启mcdreforged或重载插件
