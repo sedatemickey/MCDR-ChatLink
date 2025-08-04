@@ -37,12 +37,11 @@
     "mc_server_name": "我的mc服务器", // 该服务器名称，用于在消息中显示
     "mc_chat_format": "[{server}] <{player}> {message}", // mc中同步玩家聊天消息的格式
     "mc_event_format": "[{server}] {message}", // mc中同步事件消息的格式
-    "qq_chat_format": "[{server}] <{player}> {message}",
-    "qq_event_format": "[{server}] {message}",
-    "sync_mc_to_qq": true,
-    "sync_qq_to_mc": true,
+    "qq_chat_format": "[QQ] <{player}> {message}", // qq群中同步玩家聊天消息的格式
+    "sync_mc_to_qq": true, // 是否同步MC消息到QQ群
+    "sync_qq_to_mc": true, // 是否同步QQ消息到MC服务器
     "sync_mc_to_mc": true,
-    "sync_qq_to_qq": true,
+    "sync_qq_to_qq": true, // 是否同步QQ消息到其他QQ群
     "sync_player_join_leave": true, // 是否同步玩家加入/离开事件
     "sync_player_death": true, // 是否同步玩家死亡事件
     "sync_player_advancement": true, // 是否同步玩家成就事件

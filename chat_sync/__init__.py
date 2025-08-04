@@ -228,37 +228,52 @@ def handle_network_message(message_data, sender_id):
         else:
             chat_sync_obj = chat_sync_data  # 兼容性处理
 
-        if chat_sync_obj.type == 0:  # 取得玩家消息
-            # 广播到子服务器
-            boardcast_chat_sync_obj = chat_sync_obj
-            boardcast_chat_sync_obj.type = 2
-            network_manager.send_chat_sync_message(boardcast_chat_sync_obj, exclude_client=sender_id)
-            
-            #广播到QQ
-            forward_to_qq_group(chat_sync_obj, False)
+        if chat_sync_obj.type == 0:  # 副服务器发来的玩家消息
+            # 只有主服务器才处理这种类型的消息
+            if not config.main_server:
+                mcdr_logger.error(f"副服务器收到了 type=0 消息，这不应该发生")
 
-            # 使用配置的格式发送消息到 MC 服务器
+            # 广播到其他副服务器
+            if config.sync_mc_to_mc:
+                forward_to_game(chat_sync_obj, False)
+                # 创建新的对象避免修改原对象
+                broadcast_chat_sync_obj = ChatSyncObj(2, chat_sync_obj.server_name, chat_sync_obj.player, chat_sync_obj.message)
+                network_manager.send_chat_sync_message(broadcast_chat_sync_obj, exclude_client=sender_id)
+
+            # 广播到QQ群
+            if config.sync_mc_to_qq:
+                forward_to_qq_group(chat_sync_obj, False)            
+
+        elif chat_sync_obj.type == 1:  # 副服务器发来的玩家事件消息
+            # 只有主服务器才处理这种类型的消息
+            if not config.main_server:
+                mcdr_logger.error(f"副服务器收到了 type=1 消息，这不应该发生")
+
+            # 广播到其他副服务器
+            if config.sync_mc_to_mc:
+                forward_to_game(chat_sync_obj, True)
+                # 创建新的对象避免修改原对象
+                broadcast_chat_sync_obj = ChatSyncObj(3, chat_sync_obj.server_name, chat_sync_obj.player, chat_sync_obj.message)
+                network_manager.send_chat_sync_message(broadcast_chat_sync_obj, exclude_client=sender_id)
+
+            # 广播到QQ群
+            if config.sync_mc_to_qq:
+                forward_to_qq_group(chat_sync_obj, True)
+
+        elif chat_sync_obj.type == 2:  # 主服务器发来的玩家消息（发送给副服务器）
+            # 只有副服务器才应该收到这种消息
+            if config.main_server:
+                mcdr_logger.error(f"主服务器收到了 type=2 消息，这不应该发生")
             forward_to_game(chat_sync_obj, False)
 
-        elif chat_sync_obj.type == 1:  # 取得玩家事件消息
-            # 广播到子服务器
-            boardcast_chat_sync_obj = chat_sync_obj
-            boardcast_chat_sync_obj.type = 3
-            network_manager.send_chat_sync_message(boardcast_chat_sync_obj, exclude_client=sender_id)
-            
-            #广播到QQ
-            forward_to_qq_group(chat_sync_obj, True)
-
-            # 使用配置的格式发送消息到 MC 服务器
+        elif chat_sync_obj.type == 3:  # 主服务器发来的玩家事件信息（发送给副服务器）
+            # 只有副服务器才应该收到这种消息
+            if config.main_server:
+                mcdr_logger.error(f"主服务器收到了 type=3 消息，这不应该发生")
             forward_to_game(chat_sync_obj, True)
 
-        elif chat_sync_obj.type == 2:  # 发送玩家消息
-            forward_to_game(chat_sync_obj, False)
-
-        elif chat_sync_obj.type == 3:  # 发送玩家事件信息
-            forward_to_game(chat_sync_obj, True)
-
-        elif chat_sync_obj.type == 4:  # 发送QQ群消息
+        elif chat_sync_obj.type == 4:  # QQ群消息
+            # 所有服务器都显示QQ消息
             forward_to_game(chat_sync_obj, False)
 
         else:
@@ -372,9 +387,17 @@ def on_info(server: PluginServerInterface, info: Info):
             return
 
         # 广播消息
-        chat_sync_obj = ChatSyncObj(2 if config.main_server else 0, config.mc_server_name, player_name, message_content)
-        network_manager.send_chat_sync_message(chat_sync_obj)
-        forward_to_qq_group(chat_sync_obj, False)
+        if config.main_server:
+            # 主服务器：直接发送给副服务器，并同步到QQ
+            chat_sync_obj = ChatSyncObj(2, config.mc_server_name, player_name, message_content)
+            network_manager.send_chat_sync_message(chat_sync_obj)
+            if config.sync_mc_to_qq:
+                forward_to_qq_group(chat_sync_obj, False)
+        else:
+            # 副服务器：发送给主服务器处理
+            chat_sync_obj = ChatSyncObj(0, config.mc_server_name, player_name, message_content)
+            network_manager.send_chat_sync_message(chat_sync_obj)
+            # 副服务器不直接同步到QQ，由主服务器处理
         
 
 def on_player_joined(server: PluginServerInterface, player_name: str, info: Info):
@@ -387,9 +410,17 @@ def on_player_joined(server: PluginServerInterface, player_name: str, info: Info
         return
     
     # 广播消息
-    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}加入了游戏")
-    network_manager.send_chat_sync_message(chat_sync_obj)
-    forward_to_qq_group(chat_sync_obj, True)
+    if config.main_server:
+        # 主服务器：直接发送给副服务器，并同步到QQ
+        chat_sync_obj = ChatSyncObj(3, config.mc_server_name, player_name, f"{player_name}加入了游戏")
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        if config.sync_mc_to_qq:
+            forward_to_qq_group(chat_sync_obj, True)
+    else:
+        # 副服务器：发送给主服务器处理
+        chat_sync_obj = ChatSyncObj(1, config.mc_server_name, player_name, f"{player_name}加入了游戏")
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        # 副服务器不直接同步到QQ，由主服务器处理
 
 
 def on_player_left(server: PluginServerInterface, player_name: str):
@@ -402,9 +433,17 @@ def on_player_left(server: PluginServerInterface, player_name: str):
         return
     
     # 广播消息
-    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player_name, f"{player_name}离开了游戏")
-    network_manager.send_chat_sync_message(chat_sync_obj)
-    forward_to_qq_group(chat_sync_obj, True)
+    if config.main_server:
+        # 主服务器：直接发送给副服务器，并同步到QQ
+        chat_sync_obj = ChatSyncObj(3, config.mc_server_name, player_name, f"{player_name}离开了游戏")
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        if config.sync_mc_to_qq:
+            forward_to_qq_group(chat_sync_obj, True)
+    else:
+        # 副服务器：发送给主服务器处理
+        chat_sync_obj = ChatSyncObj(1, config.mc_server_name, player_name, f"{player_name}离开了游戏")
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        # 副服务器不直接同步到QQ，由主服务器处理
 
 
 def on_player_death(server: PluginServerInterface, player: str, event: str, content):
@@ -422,9 +461,17 @@ def on_player_death(server: PluginServerInterface, player: str, event: str, cont
         return
     
     # 广播消息
-    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
-    network_manager.send_chat_sync_message(chat_sync_obj)
-    forward_to_qq_group(chat_sync_obj, True)
+    if config.main_server:
+        # 主服务器：直接发送给副服务器，并同步到QQ
+        chat_sync_obj = ChatSyncObj(3, config.mc_server_name, player, zh_content)
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        if config.sync_mc_to_qq:
+            forward_to_qq_group(chat_sync_obj, True)
+    else:
+        # 副服务器：发送给主服务器处理
+        chat_sync_obj = ChatSyncObj(1, config.mc_server_name, player, zh_content)
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        # 副服务器不直接同步到QQ，由主服务器处理
 
 
 def on_player_advancement(server: PluginServerInterface, player: str, event: str, content):
@@ -442,9 +489,17 @@ def on_player_advancement(server: PluginServerInterface, player: str, event: str
         return
     
     # 广播消息
-    chat_sync_obj = ChatSyncObj(3 if config.main_server else 1, config.mc_server_name, player, zh_content)
-    network_manager.send_chat_sync_message(chat_sync_obj)
-    forward_to_qq_group(chat_sync_obj, True)
+    if config.main_server:
+        # 主服务器：直接发送给副服务器，并同步到QQ
+        chat_sync_obj = ChatSyncObj(3, config.mc_server_name, player, zh_content)
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        if config.sync_mc_to_qq:
+            forward_to_qq_group(chat_sync_obj, True)
+    else:
+        # 副服务器：发送给主服务器处理
+        chat_sync_obj = ChatSyncObj(1, config.mc_server_name, player, zh_content)
+        network_manager.send_chat_sync_message(chat_sync_obj)
+        # 副服务器不直接同步到QQ，由主服务器处理
 
 
 

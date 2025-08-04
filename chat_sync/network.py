@@ -382,7 +382,7 @@ class NetworkManager:
         """处理接收到的消息"""
         try:
             message_type = data.get("type")
-
+            self.logger.debug(f"接收到来自{sender_id}的网络信息")
             if message_type == "chat_sync_obj":
                 # 处理 ChatSyncObj 消息
                 self._handle_chat_sync_message(data, sender_id)
@@ -404,10 +404,6 @@ class NetworkManager:
                     handler(data, sender_id)
                 except Exception as e:
                     self.logger.error(f"消息处理器执行失败: {e}")
-
-            # 如果是主服务器，需要转发给其他副服务器
-            if self.is_main_server and sender_id != "main_server":
-                self._broadcast_to_clients(data, exclude_client=sender_id)
 
         except Exception as e:
             self.logger.error(f"处理 ChatSyncObj 消息时出错: {e}")
