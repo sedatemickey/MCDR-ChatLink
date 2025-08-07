@@ -68,38 +68,23 @@ class QQBot:
     def stop(self):
         """停止 QQ 机器人"""
         try:
-            nonebot_manager.stop()
-            self.is_enabled = False
-            self.logger.info("QQ 机器人已停止")
+            if self.is_enabled or nonebot_manager.is_running:
+                # 清理所有回调函数
+                nonebot_manager.message_callbacks['group'].clear()
+                nonebot_manager.message_callbacks['private'].clear()
+                nonebot_manager.event_callbacks.clear()
+                self.logger.debug("已清理所有 QQ 消息回调函数")
+
+                nonebot_manager.stop()
+                self.is_enabled = False
+                self.logger.info("QQ 机器人服务已停止")
+            else:
+                self.logger.debug("QQ 机器人未在运行，无需停止")
         except Exception as e:
             self.logger.error(f"停止 QQ 机器人失败: {e}")
+            # 强制重置状态
+            self.is_enabled = False
 
-    # def _register_default_handlers(self):
-    #     """注册默认的消息处理器"""
-    #     # 注册群消息处理器
-    #     nonebot_manager.register_message_callback('group', self._handle_group_message)
-
-    #     # 注册私聊消息处理器
-    #     nonebot_manager.register_message_callback('private', self._handle_private_message)
-
-    # async def _handle_group_message(self, bot, group_id: int, user_id: int,
-    #                               nickname: str, message: str, event):
-    #     """默认群消息处理器"""
-    #     self.logger.info(f"群消息 - 群:{group_id}, 用户:{nickname}({user_id}), 消息:{message}")
-
-    #     # 这里可以添加默认的消息处理逻辑
-    #     # 例如：转发到 Minecraft 服务器
-    #     if self.server:
-    #         self.server.logger.info(f"[QQ群{group_id}] {nickname}: {message}")
-
-    # async def _handle_private_message(self, bot, user_id: int, nickname: str,
-    #                                 message: str, event):
-    #     """默认私聊消息处理器"""
-    #     self.logger.info(f"私聊消息 - 用户:{nickname}({user_id}), 消息:{message}")
-
-    #     # 这里可以添加默认的私聊处理逻辑
-    #     if self.server:
-    #         self.server.logger.info(f"[QQ私聊] {nickname}: {message}")
 
     def register_group_message_handler(self, handler: Callable):
         """注册群消息处理器"""
@@ -129,15 +114,32 @@ class QQBot:
 # 全局 QQ 机器人实例
 qq_bot = QQBot()
 
+# 全局状态标志，防止重复初始化
+_is_qq_bot_initialized = False
+
 
 # ==================== 便捷函数 ====================
 
 def init_qq_bot(server: PluginServerInterface, config: ChatSyncConfig) -> bool:
     """初始化 QQ 机器人"""
+    global _is_qq_bot_initialized
+
+    # 如果已经初始化过，先停止之前的实例
+    if _is_qq_bot_initialized:
+        mcdr_logger.warning("检测到 QQ 机器人已初始化，正在重新初始化...")
+        stop_qq_bot()
+        _is_qq_bot_initialized = False
+
     host = config.onebot_ws_host
     port = config.onebot_ws_port
     access_token = config.onebot_access_token
-    return qq_bot.initialize(server, host, port, access_token)
+
+    success = qq_bot.initialize(server, host, port, access_token)
+
+    if success:
+        _is_qq_bot_initialized = True
+
+    return success
 
 
 def start_qq_bot() -> bool:
@@ -147,7 +149,15 @@ def start_qq_bot() -> bool:
 
 def stop_qq_bot():
     """停止 QQ 机器人"""
-    qq_bot.stop()
+    global _is_qq_bot_initialized
+    try:
+        qq_bot.stop()
+        _is_qq_bot_initialized = False
+        mcdr_logger.debug("QQ 机器人全局状态已重置")
+    except Exception as e:
+        mcdr_logger.error(f"停止 QQ 机器人时出错: {e}")
+        # 强制重置状态
+        _is_qq_bot_initialized = False
 
 
 async def send_to_qq_group(group_id: int, message: str) -> bool:

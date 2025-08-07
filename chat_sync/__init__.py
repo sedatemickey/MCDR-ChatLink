@@ -8,6 +8,7 @@ from .config import ChatSyncConfig, UserBindConfig
 from .utils import should_filter_message
 from .network import network_manager
 from .utils import mcdr_logger
+from .utils import get_player_list, get_all_player_lists
 from .qq import (
     init_qq_bot, start_qq_bot, stop_qq_bot,
     send_to_qq_group, send_to_qq_user,
@@ -23,7 +24,7 @@ plugin_server: PluginServerInterface
 class ChatSyncObj:
     """ChatSync 消息对象"""
     def __init__(self, type: int, server_name: str, player: str | None, message: str):
-        self.type = type  # 0: 取得玩家消息 1:取得玩家事件信息 2: 发送玩家消息 3: 发送玩家事件信息 4: 发送QQ群消息
+        self.type = type  # 0: 取得玩家消息 1:取得玩家事件信息 2: 发送玩家消息 3: 发送玩家事件信息 4: 发送QQ群消息 5: 玩家列表请求 6: 玩家列表回复
         self.server_name = server_name
         self.player = player
         self.message = message
@@ -85,28 +86,6 @@ def on_load(server: PluginServerInterface, prev_module):
             server.logger.error("nonebot服务初始化失败")
         
     mcdr_logger.info("ChatSync loaded")
-
-
-# def get_bound_nickname(user_id: str) -> str | None:
-#     """
-#     获取用户绑定的昵称
-
-#     :param user_id: QQ用户ID
-#     :return: 绑定的昵称，如果未绑定则返回None
-#     """
-#     global user_bind_config
-#     return user_bind_config.get_bound_nickname(user_id)
-
-
-# def is_user_bound(user_id: str) -> bool:
-#     """
-#     检查用户是否已绑定昵称
-
-#     :param user_id: QQ用户ID
-#     :return: 如果已绑定返回True，否则返回False
-#     """
-#     global user_bind_config
-#     return user_bind_config.is_bound(user_id)
 
 
 async def on_qq_group_message(bot, group_id, user_id, nickname, message, event):
@@ -174,8 +153,15 @@ async def on_qq_group_message(bot, group_id, user_id, nickname, message, event):
             help_text = """可用指令:
 /bind <游戏昵称> - 绑定游戏昵称
 /unbind - 解绑当前昵称
+/list - 查看在线玩家列表
 /help - 显示帮助信息"""
             await send_to_qq_group(group_id, help_text)
+        
+        elif command == "list":
+            player_list = await get_all_player_lists(plugin_server, config)
+            mcdr_logger.debug(f"取得玩家列表: {player_list}")
+            mcdr_logger.info(f"发送玩家列表到群 {group_id}")
+            await send_to_qq_group(group_id, player_list)
 
         else:
             await send_to_qq_group(group_id, f"未知指令: /{command}，使用 /help 查看可用指令")
@@ -275,6 +261,27 @@ def handle_network_message(message_data, sender_id):
         elif chat_sync_obj.type == 4:  # QQ群消息
             # 所有服务器都显示QQ消息
             forward_to_game(chat_sync_obj, False)
+
+        elif chat_sync_obj.type == 5:  # 玩家列表请求
+            # 只有副服务器才应该收到这种消息
+            if config.main_server:
+                mcdr_logger.error(f"主服务器收到了 type=5 消息，这不应该发生")
+            else:
+                # 副服务器处理玩家列表请求
+                request_id = chat_sync_obj.message
+                player_list = get_player_list(plugin_server, config)
+                # 发送回复，消息格式为 "request_id|player_list_content"
+                reply_message = f"{request_id}|{player_list}"
+                reply_obj = ChatSyncObj(6, config.mc_server_name, None, reply_message)
+                network_manager.send_chat_sync_message(reply_obj)
+                mcdr_logger.debug(f"已回复玩家列表请求: {request_id}")
+
+        elif chat_sync_obj.type == 6:  # 玩家列表回复
+            # 只有主服务器才应该收到这种消息
+            if not config.main_server:
+                mcdr_logger.error(f"副服务器收到了 type=6 消息，这不应该发生")
+            # 主服务器的回复处理由 get_all_player_lists 函数中的临时处理器处理
+            mcdr_logger.debug(f"收到玩家列表回复: {chat_sync_obj.message[:50]}...")
 
         else:
             raise ValueError(f"未知的 ChatSyncObj 类型: {chat_sync_obj.type}")
@@ -505,8 +512,18 @@ def on_player_advancement(server: PluginServerInterface, player: str, event: str
 
 def on_unload(server: PluginServerInterface):
     """插件卸载时的清理工作"""
-    network_manager.stop()
-    mcdr_logger.info("网络服务已停止")
+    try:
+        # 停止网络服务
+        network_manager.stop()
+        mcdr_logger.info("网络服务已停止")
+
+        # 停止 QQ 机器人服务
+        stop_qq_bot()
+
+    except Exception as e:
+        mcdr_logger.error(f"插件卸载时出错: {e}")
+
+    mcdr_logger.info("ChatSync 插件已卸载")
 
 
 if __name__ == "__main__":

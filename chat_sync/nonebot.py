@@ -37,24 +37,27 @@ except ImportError:
 
 class NoneBotManager:
     """NoneBot2 管理器"""
-    
+
     def __init__(self):
         self.is_initialized = False
         self.is_running = False
         self.bot_instance: Optional[Any] = None
         self.server: Optional[PluginServerInterface] = None
         self.logger = mcdr_logger
-        
+
         # 回调函数
         self.message_callbacks: Dict[str, List[Callable]] = {
             'group': [],
             'private': []
         }
         self.event_callbacks: Dict[str, List[Callable]] = {}
-        
+
         # 运行时状态
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._thread: Optional[threading.Thread] = None
+
+        # 处理器注册状态
+        self._handlers_registered = False
 
     def check_availability(self) -> bool:
         """检查 NoneBot2 是否可用"""
@@ -68,9 +71,12 @@ class NoneBotManager:
         if not self.check_availability():
             raise ImportError("NoneBot2 未安装，请运行: pip install nonebot2 nonebot-adapter-onebot")
 
-        if self.is_initialized:
-            self.logger.warning("NoneBot2 已经初始化")
-            return
+        # 如果已经初始化，先停止之前的实例
+        if self.is_initialized or self.is_running:
+            self.logger.warning("NoneBot2 已经初始化，正在重新初始化...")
+            self.stop()
+            # 重置初始化状态
+            self.is_initialized = False
 
         self.server = server
 
@@ -79,14 +85,28 @@ class NoneBotManager:
             config = {
                 "host": host,
                 "port": port,
-                "log_level": log_level, 
+                "log_level": log_level,
                 "driver": "~fastapi+~httpx+~websockets",
                 "onebot_access_token": access_token or "",
+                # 添加服务器配置，允许端口重用
+                "fastapi_reload": False,
+                "fastapi_debug": False,
             }
 
             # 确保 nonebot 模块可用
             if nonebot is None:
                 raise RuntimeError("NoneBot2 模块不可用")
+
+            # 检查是否已经有 NoneBot 实例，如果有则清理
+            try:
+                existing_driver = nonebot.get_driver()
+                if existing_driver:
+                    self.logger.warning("检测到已存在的 NoneBot 实例，正在清理...")
+                    # 重置 NoneBot 的全局状态
+                    nonebot._driver = None
+            except Exception as e:
+                # 没有现有实例或清理失败，继续初始化
+                self.logger.debug(f"清理现有 NoneBot 实例时出错: {e}")
 
             nonebot.init(**config)
 
@@ -112,6 +132,11 @@ class NoneBotManager:
     def _register_handlers(self):
         """注册消息处理器"""
         if not NONEBOT_AVAILABLE or on_message is None:
+            return
+
+        # 避免重复注册处理器
+        if self._handlers_registered:
+            self.logger.debug("消息处理器已注册，跳过重复注册")
             return
 
         # 群消息处理器
@@ -169,6 +194,10 @@ class NoneBotManager:
             except Exception as e:
                 self.logger.error(f"处理私聊消息时出错: {e}")
 
+        # 标记处理器已注册
+        self._handlers_registered = True
+        self.logger.debug("消息处理器注册完成")
+
     def _register_bot_events(self):
         """注册机器人连接事件"""
         if not NONEBOT_AVAILABLE or nonebot is None:
@@ -221,10 +250,26 @@ class NoneBotManager:
                 # 运行 NoneBot WebSocket 服务器
                 if nonebot is not None:
                     self.logger.debug("正在启动 NoneBot2 WebSocket 服务器...")
-                    nonebot.run()
+
+                    # 添加重试机制处理端口占用
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            nonebot.run()
+                            break
+                        except Exception as e:
+                            if "10048" in str(e) and attempt < max_retries - 1:
+                                self.logger.warning(f"端口被占用，等待2秒后重试... (尝试 {attempt + 1}/{max_retries})")
+                                import time
+                                time.sleep(2)
+                            else:
+                                raise e
 
             except Exception as e:
-                self.logger.error(f"NoneBot2 WebSocket 服务器运行出错: {e}")
+                if "10048" in str(e):
+                    self.logger.error(f"NoneBot2 WebSocket 服务器启动失败: 端口被占用，请检查是否有其他实例在运行")
+                else:
+                    self.logger.error(f"NoneBot2 WebSocket 服务器运行出错: {e}")
             finally:
                 self.is_running = False
         
@@ -239,23 +284,93 @@ class NoneBotManager:
             return
 
         try:
-            if self._loop and not self._loop.is_closed():
-                # 在事件循环中停止
-                asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
+            self.logger.debug("正在停止 NoneBot2 WebSocket 服务器...")
 
+            # 标记为停止状态
             self.is_running = False
-            self.logger.debug("NoneBot2 WebSocket 服务器已停止")
-            
+
+            # 清理机器人实例
+            self.bot_instance = None
+
+            # 强制关闭 NoneBot2 驱动器和服务器
+            try:
+                if NONEBOT_AVAILABLE and nonebot is not None:
+                    # 重置 NoneBot 的全局驱动器
+                    nonebot._driver = None
+                    self.logger.debug("已重置 NoneBot 驱动器")
+            except Exception as e:
+                self.logger.debug(f"关闭驱动器时出错: {e}")
+
+            # 停止事件循环
+            if self._loop and not self._loop.is_closed():
+                try:
+                    # 在事件循环中执行关闭操作
+                    future = asyncio.run_coroutine_threadsafe(self._shutdown(), self._loop)
+                    future.result(timeout=3.0)  # 减少等待时间到3秒
+                except Exception as e:
+                    self.logger.debug(f"异步关闭失败: {e}")
+
+                try:
+                    # 停止事件循环
+                    self._loop.call_soon_threadsafe(self._loop.stop)
+                except Exception as e:
+                    self.logger.debug(f"停止事件循环失败: {e}")
+
+            # 等待线程结束
+            if self._thread and self._thread.is_alive():
+                try:
+                    self._thread.join(timeout=3.0)  # 减少等待时间到3秒
+                    if self._thread.is_alive():
+                        self.logger.debug("NoneBot2 线程未能在3秒内正常结束，强制继续")
+                except Exception as e:
+                    self.logger.debug(f"等待线程结束失败: {e}")
+
+            # 清理资源
+            self._loop = None
+            self._thread = None
+
+            # 清理回调函数
+            self.message_callbacks.clear()
+            self.event_callbacks.clear()
+
+            # 重置初始化状态
+            self.is_initialized = False
+
+            # 重置处理器注册状态
+            self._handlers_registered = False
+
+            # 等待端口释放
+            import time
+            time.sleep(1)  # 等待1秒让端口完全释放
+
+            self.logger.info("NoneBot2 WebSocket 服务器已停止")
+
         except Exception as e:
             self.logger.error(f"停止 NoneBot2 时出错: {e}")
+            # 强制重置所有状态
+            self.is_running = False
+            self.is_initialized = False
+            self.bot_instance = None
+            self._loop = None
+            self._thread = None
 
     async def _shutdown(self):
         """异步关闭"""
         try:
-            # 这里可以添加清理逻辑
-            pass
+            # 清理 NoneBot 相关资源
+            if NONEBOT_AVAILABLE and nonebot is not None:
+                try:
+                    # 重置 NoneBot 的全局驱动器
+                    nonebot._driver = None
+                    self.logger.debug("已清理 NoneBot 驱动器")
+                except Exception as e:
+                    self.logger.error(f"清理 NoneBot 驱动器时出错: {e}")
+
+            # 清理其他资源
+            self.bot_instance = None
+
         except Exception as e:
-            self.logger.error(f"关闭时出错: {e}")
+            self.logger.error(f"异步关闭时出错: {e}")
 
     async def send_group_message(self, group_id: int, message: str) -> bool:
         """发送群消息"""

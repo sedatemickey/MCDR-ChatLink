@@ -130,7 +130,9 @@ class NetworkManager:
             self.socket_server = None
 
         # 关闭所有客户端连接
-        for client_id, client_socket in self.client_connections.items():
+        # 先复制字典的项目列表，避免在迭代时修改字典
+        client_items = list(self.client_connections.items())
+        for client_id, client_socket in client_items:
             try:
                 client_socket.close()
             except:
